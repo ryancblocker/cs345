@@ -1,0 +1,131 @@
+class NeuralNetwork:
+   
+    def __init__(self, n_inputs, n_hidden_units_per_layer, class_names):
+       
+        self.n_inputs = n_inputs
+        self.n_hidden_units_per_layer = n_hidden_units_per_layer
+        self.n_hidden_layers = len(n_hidden_units_per_layer)
+
+        self.classes = np.array(class_names)
+        self.n_outputs = len(self.classes)
+       
+        # Make list of weight matrices, self.Ws, with one weight matrix for each layer
+        self.Ws = []
+        ni = n_inputs
+        for nh in self.n_hidden_units_per_layer:
+            # ...     
+            ni = nh
+        self.Ws.append(self._make_W(ni, self.n_outputs))
+
+        self.epochs = None
+        self.mse_trace = []
+        self.percent_correct_trace = []
+       
+        self.X_means = None
+        self.X_stds = None
+       
+    def __repr__(self):
+        s = f'NeuralNetwork({self.n_inputs}, {self.n_hidden_units_per_layer}, {self.classes})'
+        if self.epochs is None:
+            s += f'\n Not trained yet.'
+        else:
+            s += f'\n Trained for {self.epochs} epochs '
+            s += f'with a final training percent correct of {self.percent_correct_trace[-1]:.2f}.'
+        return s
+
+    def __str__(self):
+        return self.__repr__()
+
+    def _make_W(self, ni, nu):
+        return np.random.uniform(-1, 1, size=(ni + 1, nu)) / np.sqrt(ni + 1)
+    
+    def _f(self, S):
+        return np.tanh(S)
+
+    def _df(self, fS):
+        return (1 - fS ** 2)
+    
+    def train(self, X, T, n_epochs, learning_rate, verbose=False):
+
+        learning_rate = learning_rate / X.shape[0]  # n_samples
+        
+        # Standardize X
+        X = self._standardizeX(X)
+       
+        # Make indicator variables from T
+        T_iv = self._make_indicator_vars(T)
+
+        # Repeat for n_steps:
+        for epoch in range(n_epochs):
+           
+            # Forward pass
+            Y_classes, Y_softmax = self.use(X, standardized=True)
+            
+            # Backward pass
+            n_layers = len(self.Ws)
+            deltas = [-2 * (T_iv - Y_softmax)]
+            for layer_i in reversed(range(1, n_layers)):
+                W = self.Ws[layer_i]
+                H = self.Hs[layer_i]  # because self.Hs[0] is X
+                deltas.append(deltas[-1] @ W[1:, :].T * self._df(H))
+
+            # deltas constructed from last layer to first layer, so reverse their order
+            deltas.reverse()
+
+            # Update the weights
+            for layer_i in reversed(range(n_layers)):
+                W = self.Ws[layer_i]
+                H = self.Hs[layer_i]  # because self.Hs[0] is X
+                W -= learning_rate * ...  
+
+            # Save stats for this epoch
+
+            # Append value of E to self.mse_trace
+            self.mse_trace.append(self._E(X, T_iv))
+           
+            # Append value of percent_correct to self.percent_correct_trace
+            Y_classes, Y = self.use(X, standardized=True)
+            self.percent_correct_trace.append(self.percent_correct(T, Y_classes))
+
+            if verbose and (epoch + 1) % (n_epochs // 10) == 0:
+                print(f'Epoch {epoch+1}: {self.percent_correct_trace[-1]:.2f}% correct')
+
+        self.epochs = n_epochs
+        return self
+               
+    def use(self, X, standardized=False):
+        if not standardized:
+            X = self._standardizeX(X)
+        self.Hs = [X]
+        for W in self.Ws[:-1]:
+            self.Hs.append(... )  # append outputs of hidden layer using W and previous self.Hs
+        Y = self._add_ones(self.Hs[-1]) @ self.Ws[-1]
+        Y_softmax = self._softmax(Y)
+        Y_classes = self.classes[np.argmax(Y_softmax, axis=1)].reshape(-1, 1)
+        return Y_classes, Y_softmax
+
+    def _standardizeX(self, X):
+        if self.X_means is None:
+            self.X_means = np.mean(X, axis=0)
+            self.X_stds = np.std(X, axis=0)
+            self.X_stds[self.X_stds == 0] = 1
+        return (X - self.X_means) / self.X_stds
+   
+    def _make_indicator_vars(self, T):
+        return (T == np.unique(T)).astype(int)
+   
+    def _add_ones(self, X):
+        return np.insert(X, 0, 1, 1)
+    
+    def _softmax(self, Y):
+        fs = np.exp(Y)  # N x K
+        denom = np.sum(fs, axis=1).reshape((-1, 1))
+        return fs / denom
+   
+    def _E(self, X, T_iv):
+        Y_class_names, Y_softmax = self.use(X, standardized=True)
+        sq_diffs = (T_iv - Y_softmax) ** 2
+        return np.mean(sq_diffs)
+
+    def percent_correct(self, T, Y_classes):
+        return 100 * np.mean(T == Y_classes)
